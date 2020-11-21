@@ -12,4 +12,4 @@ Feature 'Time' contains the seconds elapsed between each transaction and the fir
 The feature 'Amount' is the transaction Amount, this feature can be used for example-dependant cost-senstive learning. 
 Feature 'Class' is the response variable and it takes value 1 in case of fraud and 0 otherwise.
 
-Here I follow the script and aplication from Luis Otavio and made some changes according to my preferences in analysing.
+Here I follow the script and aplication from Luis Otavio and made some changes according to my preferences in analysing. In the Luis Otavio channel he presents a video-aula (https://www.youtube.com/watch?v=rSnPkYnaH4E&feature=youtu.be&ab_channel=LuisOtavio) about this example.
