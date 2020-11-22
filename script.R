@@ -1,7 +1,6 @@
 ############################# First we need to import the data from csv.file
 
 data<-read.csv("creditcard.csv", sep=";",h=T)
-data<-as.data.frame(data)
 
 ######################## To explore the data to understand better their properties
 
@@ -62,11 +61,12 @@ ggplot(data_thin) +
 ######### data management
 
 # Let's to scale the non-binary variables (amount and max value)
-data$amount<-scale(data$amount)
-data$max_value<-scale(data$max_value)
+data$amount<-c(scale(data$amount))
+data$max_value<-c(scale(data$max_value))
 
 
-###### Split data into train and test
+
+##### Split data into train and test
 set.seed(2452)
 data$r<-runif(nrow(data),min=0,max=1)
 
@@ -81,27 +81,56 @@ table(train$class)
 table(test$class)
 
 
+############ evaluate correlation between variables
+corr<-cor(data[,1:7], method = c("pearson"))
+corr
+
+
+library(corrplot)
+corrplot(corr, type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 45)
+
+### We have correlated variables (correct_fill and charge back), bu in this case this is not a great problem, since we
+# are interested mainly in the outcome, not in determining each variable importance
+# I recognize correlated variables may imply a problem in estimation, but here I will desconsider this in order to only do the full process
+# of build a model and deploying
+
 ######### Adjusting the logistic regression
 
-log_mod<- glm(class ~.,train,family = binomial)
+### First I will obtain a global model with the full variables
 
+log_mod<- glm(class ~correct_fill+cpf_died+cpf_dirty+days_last+max_value+charge_back+amount,train,family = binomial,"na.action"="na.fail")
+
+# But i have correlation between two variables (correct_fill and charge back). I will do two models with just one of tem and compare
+log_mod2<- glm(class ~correct_fill+cpf_died+cpf_dirty+days_last+max_value+amount,train,family = binomial,"na.action"="na.fail")
+log_mod3<- glm(class ~cpf_died+cpf_dirty+days_last+max_value+charge_back+amount,train,family = binomial,"na.action"="na.fail")
+
+
+## let's compare  
+model.sel(log_mod,log_mod2,log_mod3)
+
+##3 the second model is the best, thus i will just use it
 ## model
-summary(log_mod)
 
-## lets evaluate somethings in model
+summary(log_mod2)
+
+## lets evaluate somethings in global model
 #overdispersion
-log_mod$deviance/log_mod$df.residual
+log_mod2$deviance/log_mod2$df.residual
 
 ### since it is lower than 1, there is no overdispersion
-
 
 ## compare the model deviance to the null deviance (deviance under a null model)
 ## since model deviance is lower, our model has a good fit
 
 
+########## let's to obtain submodels with no correlation
+
+
+
 ### let's do the prediction
-train$pred<-predict(log_mod,newdata = train,type="response")
-test$pred<-predict(log_mod,newdata = test,type="response")
+train$pred<-predict(log_mod2,newdata = train,type="response")
+test$pred<-predict(log_mod2,newdata = test,type="response")
 
 ### let's do a double plot to see how the prediction are distributed.
 ## the ideal is to have "1" in the rigth side of plot
@@ -118,15 +147,18 @@ DoubleDensityPlot(train,
 
 ### enrichment is the rate of precision to the average rate of positives
 
+help("PRTPlot")
 plt <- PRTPlot(train, "pred", "class", 1,    	# Note: 1 
                plotvars = c("enrichment", "recall"),
                thresholdrange = c(0,1),                                       
                title = "Enrichment/recall vs. threshold for fraud model") 
 plt
-plt + geom_vline(xintercept = 0.5, color="red", linetype = 2)
+plt + geom_vline(xintercept = 0.1, color="red", linetype = 2)
 
 
+## base the results of image i will adopt the threshold od 0.1
 
+### ROC plot: greater the model, better the fitting
 
 ROCPlot(test,                                       
         xvar = "pred", 
@@ -136,15 +168,20 @@ ROCPlot(test,
 
 
 ### let's to do a confusion matrix
+### but it is important to remember confusion matrix is not a goo tool for situations we have unbalanced classes
+# in this situations the null vs model residues comparison is enough
+
+# but let's doing it to see the results
+## here
 
 confmat <- table(truth = test$class,
-                       prediction = ifelse(test$pred > 0.5, 
+                       prediction = ifelse(test$pred > 0.1, 
                                            "1", "0"))
 print(confmat)
 
 
 
-##existem uma série de medidas pra avaliar na matriz de confusão
+##there are a series of measures to evaluate in the confusion matrix
 
 # Accuracy: how much I got it right within the whole. It is the result of the relationship between the correct predictions
 # and the total of predictions. The correct predictions are diagonal (true negative and true positive)
@@ -182,26 +219,21 @@ recall <- confmat[2,2] / (confmat[2,1]+ confmat[2,2])
 # F1 is 1 when the classifier has perfect accuracy and recall
 
 
-#especificidade e sensibilidade
+#specificity and sensitivity
 
-#sensitivity é igual a recall
-#especificidade é a taxa de true negatives e responde a pergunta: "Qual fração do que não é spam de fato foi considerado
-#como não spam?
+#sensitivity equals recall
+#specificity is the rate of true negatives and answers the question: "What fraction of what is not spam was actually considered
+# how not spam?
 
-confmat_fisio[1,1] / (confmat_fisio[1,1] + confmat_fisio[1,2])
+confmat[1,1] / (confmat[1,1] + confmat[1,2])
 
-#1-especificidade é igual a false positive rate, que responde a pergunta: Qual fração do não-spam vai ser classificado
-#como spam pelo classificador?
-
-
+# 1-specificity is equal to false positive rate, which answers the question: What fraction of non-spam will be classified
+#as spam by the classifier?
 
 
+### Since we finally our model by evaluating its quality, now we will save it to use latter.
 
+summary(log_mod2)
 
-
-table(test$pred_class,test$class)
-
-
-
-gdata::keep(log_mod,sure=T)
+gdata::keep(log_mod2,sure=T)
 save.image(".RData")

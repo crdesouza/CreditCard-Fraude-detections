@@ -20,4 +20,4 @@ The data has 8 columms:
 #class: the response variable (1 = fraud; 0 = not fraude). 
 
 
-*** It is important to highlight that the first três values are not in real scales due to data confidence and are presented as PCA axes. This is the original data format.
+*** It is important to highlight that the first three values are not in real scales due to data confidence and are presented as PCA axes. This is the original data format.
