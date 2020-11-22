@@ -1,7 +1,8 @@
 ---
 title: "Frauds in credit card in Europe"
-subtitle: "by Cléber Rodrigo de Souza"
+subtitle: by Cléber Rodrigo de Souza
 output:
+  pdf_document: default
   html_document:
     df_print: paged
 ---
@@ -13,24 +14,24 @@ The database if from kaggle (https://www.kaggle.com/mlg-ulb/creditcardfraud) and
 This data were modified by Luis Otavio and it is not equal to eh original database. Here I follow the script and aplication from Luis Otavio and made some changes according to my preferences in analysing. In the Luis Otavio channel he presents a [video-aula] (https://www.youtube.com/watch?v=rSnPkYnaH4E&feature=youtu.be&ab_channel=LuisOtavio) about this example.
 
 The data has 8 columms: 
-**correct_fill**
+## correct_fill
 value representing whether the all information were filled correctly 
-**cpf_died**
+## cpf_died
 value representing whether the client used a cpf (brazilian Id number) of a died person 
- **cpf_dirty**
+## cpf_dirty
 value representing whether the client used a cpf that has some pendencies related for not paying bills. 
-**max_value**
+## max_value
 the maximum value the person has ever paid in the credit card. 
- **days_last**
+# days_last
 the days since the person made has last buying using the credit card. 
-**charge_back**
+## charge_back
 represent the number of times person has declared the occurrence of charge back in the credit card, that is the situation when you see a buy you not did. 
-**amount**
+## amount
 the amount of cash spend in this transaction. #class: the response variable (1 = fraud; 0 = not fraude).
 
 *** It is important to highlight that the first three values are not in real scales due to data confidence and are presented as PCA axes. This is the original data format. 
 
-
+## Let's to start the analysis
 ```{r}
 data<-read.csv("creditcard.csv", sep=";",h=T)
 data<-as.data.frame(data)
@@ -58,8 +59,198 @@ table(data$class)
 
 ```
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+## Let's to start the data management
 
-The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+```{r,message=F}
+######### data management
+
+# Let's to scale the non-binary variables (amount and max value)
+data$amount<-c(scale(data$amount))
+data$max_value<-c(scale(data$max_value))
+
+
+
+##### Split data into train and test
+set.seed(2452)
+data$r<-runif(nrow(data),min=0,max=1)
+
+train<- data[data$r>=0.8,]
+test<-data[data$r<0.2,]
+
+dim(train)
+dim(test)
+
+table(train$class)
+
+table(test$class)
+
+```
+
+## Before start modelling we need to evaluate whether there are correlation between variables and possibly remove any.
+
+```{r,message=F}
+############ evaluate correlation between variables
+corr<-cor(data[,1:7], method = c("pearson"))
+corr
+
+
+library(corrplot)
+corrplot(corr, type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 45)
+
+```
+
+
+We have correlated variables (correct_fill and charge back), but in this case this is not a great
+problem, since we are interested mainly in the outcome, not in determining each variable importance
+I recognize correlated variables may imply a problem in estimation, but here I will desconsider this in order to only do the full process of build a model and deploying
+
+## Let's build the model
+```{r,message=F}
+######### Adjusting the logistic regression
+
+### First I will obtain a global model with the full variables
+
+log_mod<- glm(class ~correct_fill+cpf_died+cpf_dirty+days_last+max_value+charge_back+amount,train,family = binomial,"na.action"="na.fail")
+
+# But i have correlation between two variables (correct_fill and charge back). I will do two models with just one of tem and compare
+log_mod2<- glm(class ~correct_fill+cpf_died+cpf_dirty+days_last+max_value+amount,train,family = binomial,"na.action"="na.fail")
+log_mod3<- glm(class ~cpf_died+cpf_dirty+days_last+max_value+charge_back+amount,train,family = binomial,"na.action"="na.fail")
+
+
+## let's compare  
+library(MuMIn)
+model.sel(log_mod,log_mod2,log_mod3)
+
+##3 the second model is the best, thus i will just use it
+## model
+
+summary(log_mod2)
+
+## lets evaluate somethings in global model
+#overdispersion
+log_mod2$deviance/log_mod2$df.residual
+
+### since it is lower than 1, there is no overdispersion
+
+## compare the model deviance to the null deviance (deviance under a null model)
+## since model deviance is lower, our model has a good fit
+
+
+### let's do the prediction
+train$pred<-predict(log_mod2,newdata = train,type="response")
+test$pred<-predict(log_mod2,newdata = test,type="response")
+
+### let's do a double plot to see how the prediction are distributed.
+## the ideal is to have "1" in the rigth side of plot
+library(WVPlots)
+library(ggplot2)
+DoubleDensityPlot(train, 
+                  xvar = "pred",
+                  truthVar = "class",
+                  title = "Distribution of scores for fraud filter")
+
+
+###### one important thing is to determine the limit of the prediction values to differentiate classes
+### one option for this is to see the relationship between enrichment and recall
+##3 I do this using the training data
+
+### enrichment is the rate of precision to the average rate of positives
+
+plt <- PRTPlot(train, "pred", "class", 1,    	# Note: 1 
+               plotvars = c("enrichment", "recall"),
+               thresholdrange = c(0,1),                                       
+               title = "Enrichment/recall vs. threshold for fraud model") 
+plt + geom_vline(xintercept = 0.1, color="red", linetype = 2)
+
+
+## base the results of image i will adopt the threshold od 0.1
+
+### ROC plot: greater the ROC value, better the fitting
+
+ROCPlot(test,                                       
+        xvar = "pred", 
+        truthVar = "class", 
+        truthTarget = "1", 
+        title = 'Fraud filter test performance')
+```
+
+### let's to do a confusion matrix
+but it is important to remember confusion matrix is not a goo tool for situations we have unbalanced classes. in this situations the null vs model residues comparison is enough.
+But let's doing it to see the results
+
+```{r}
+confmat <- table(truth = test$class,
+                       prediction = ifelse(test$pred > 0.1, 
+                                           "1", "0"))
+print(confmat)
+
+```
+
+### There are a series of measures to evaluate in the confusion matrix
+
+## Accuracy: 
+how much I got it right within the whole. It is the result of the relationship between the correct predictions and the total of predictions. The correct predictions are diagonal (true negative and true positive).
+I used this measure here, but remember that accuracy is not a very good measure for unbalanced classes or #with rare events, considering that in these situations the null model already tends to be good
+
+```{r}
+
+
+(confmat[1,1]+confmat[2,2])/sum(confmat)
+
+
+```
+
+## Precision and Recall
+
+**precision**: relationship between what was predicted correct (true positive) and what was predicted as positive. this measure answers the question "if the model says it is fraud, what is the chance of it really being?"
+
+
+**recall**: relationship between what was correctly predicted (TP) and what is in fact fraud (FN + TP). this measure answers the question "of all the fraud in my dataset, how many were classified correctly as such?
+```{r}
+#precision
+confmat[2,2] / (confmat[2,2]+ confmat[1,2])
+
+#recall
+confmat[2,2] / (confmat[2,1]+ confmat[2,2])
+
+```
+## F1 Score
+
+the F1 score measure is a good measure to use as a comparison metric between classifiers.This is better and easier to look at one measurement, than two. This measure quantifies a trade-off between precision and recall, and is defined as the harmonic average of precision and recall.
+
+F1 is 1 when the classifier has perfect accuracy and recall
+
+```{r}
+precision <- confmat[2,2] / (confmat[2,2]+ confmat[1,2])
+recall <- confmat[2,2] / (confmat[2,1]+ confmat[2,2])
+
+(F1 <- 2 * precision * recall / (precision + recall) )
+```
+
+
+## Specificity and Sensitivity
+
+Sensitivity equals recall.
+
+Specificity is the rate of true negatives and answers the question: "What fraction of what is not fraud was actually considered how not fraud?
+
+1-specificity is equal to false positive rate, which answers the question: What fraction of non-fraud will be classified as frau by the classifier?
+```{r}
+#specificity
+confmat[1,1] / (confmat[1,1] + confmat[1,2])
+```
+
+
+### Since we finally our model by evaluating its quality, now we will save it to use latter in the app.
+```{r}
+summary(log_mod2)
+gdata::keep(log_mod2,sure=T)
+save.image(".RData")
+```
+
+
+
+
+

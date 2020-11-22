@@ -179,8 +179,8 @@ confmat <- table(truth = test$class,
                                            "1", "0"))
 print(confmat)
 
-
-
+help(geom_)
+help("PRPlot")
 ##there are a series of measures to evaluate in the confusion matrix
 
 # Accuracy: how much I got it right within the whole. It is the result of the relationship between the correct predictions
@@ -227,13 +227,12 @@ recall <- confmat[2,2] / (confmat[2,1]+ confmat[2,2])
 
 confmat[1,1] / (confmat[1,1] + confmat[1,2])
 
-# 1-specificity is equal to false positive rate, which answers the question: What fraction of non-spam will be classified
-#as spam by the classifier?
+# 1-specificity is equal to false positive rate, which answers the question: What fraction of non-fraud will be classified
+#as fraud by the classifier?
 
 
 ### Since we finally our model by evaluating its quality, now we will save it to use latter.
 
 summary(log_mod2)
 
-gdata::keep(log_mod2,sure=T)
-save.image(".RData")
+
