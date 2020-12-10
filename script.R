@@ -101,22 +101,23 @@ corrplot(corr, type = "upper", order = "hclust",
 
 log_mod<- glm(class ~correct_fill+cpf_died+cpf_dirty+days_last+max_value+charge_back+amount,train,family = binomial,"na.action"="na.fail")
 
-# But i have correlation between two variables (correct_fill and charge back). I will do two models with just one of tem and compare
-log_mod2<- glm(class ~correct_fill+cpf_died+cpf_dirty+days_last+max_value+amount,train,family = binomial,"na.action"="na.fail")
-log_mod3<- glm(class ~cpf_died+cpf_dirty+days_last+max_value+charge_back+amount,train,family = binomial,"na.action"="na.fail")
+
+### Let's to do a dredge to obtain the several submodels with no correlation
+library(MuMIn)
+
+dredge1=dredge(log_mod,trace=2,subset=abs(corr) < 0.6) 
+
+dredge1
+
+res<-summary(model.avg(dredge1, subset = delta <= 2,fit=T))
+res
 
 
-## let's compare  
-model.sel(log_mod,log_mod2,log_mod3)
-
-##3 the second model is the best, thus i will just use it
-## model
-
-summary(log_mod2)
+res$residuals
 
 ## lets evaluate somethings in global model
 #overdispersion
-log_mod2$deviance/log_mod2$df.residual
+log_mod$deviance/log_mod$df.residual
 
 ### since it is lower than 1, there is no overdispersion
 
@@ -124,13 +125,22 @@ log_mod2$deviance/log_mod2$df.residual
 ## since model deviance is lower, our model has a good fit
 
 
-########## let's to obtain submodels with no correlation
+## let's to see the select variables
+res
 
+## let's create a model with them
+mx<-glm(class ~correct_fill+cpf_died+cpf_dirty+days_last+max_value+charge_back+amount,train,family = binomial,"na.action"="na.fail")
+summary(mx)
+
+## and them change the coefficients using the full model values obtained by multimodel
+mx$coefficients<-res$coefmat.full[,1]
+summary(mx)
 
 
 ### let's do the prediction
-train$pred<-predict(log_mod2,newdata = train,type="response")
-test$pred<-predict(log_mod2,newdata = test,type="response")
+train$pred<-predict(mx,newdata = train,type="response")
+test$pred<-predict(mx,newdata = test,type="response")
+
 
 ### let's do a double plot to see how the prediction are distributed.
 ## the ideal is to have "1" in the rigth side of plot
@@ -179,8 +189,7 @@ confmat <- table(truth = test$class,
                                            "1", "0"))
 print(confmat)
 
-help(geom_)
-help("PRPlot")
+
 ##there are a series of measures to evaluate in the confusion matrix
 
 # Accuracy: how much I got it right within the whole. It is the result of the relationship between the correct predictions
@@ -233,6 +242,7 @@ confmat[1,1] / (confmat[1,1] + confmat[1,2])
 
 ### Since we finally our model by evaluating its quality, now we will save it to use latter.
 
-summary(log_mod2)
 
 
+gdata::keep(mx,sure=T)
+save.image(".RData")

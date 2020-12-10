@@ -15,7 +15,9 @@ ui <- tagList(
                       )),
                column(3,
                       selectInput('cpf_died', label="Is the CPF of a person already deceased?",choices=c(0,1), width = NULL
-                      ))),
+                      )),
+               column(3,
+                      textInput('charge_back', label="What is the number of charges back?", width = NULL,placeholder = "0"))),
              fluidRow(column(3,
                       selectInput('cpf_dirty', label="Is the CPF dirty in the market?",choices=c(0,1), width = NULL )),
                       column(2,textInput('days_last', label="How many days ago was the last purchase?", width = NULL,
@@ -33,6 +35,7 @@ server <- function(input, output, session) {
 
   data_client <-reactive({
     data.frame(correct_fill=as.numeric(input$correct_fill),
+    charge_back=as.numeric(input$charge_back),
     cpf_died=as.numeric(input$cpf_died),
     cpf_dirty=as.numeric(input$cpf_dirty),
     days_last=as.numeric(input$days_last),
@@ -43,7 +46,7 @@ server <- function(input, output, session) {
   
   
 
-  probability <- reactive({ log_mod2 %>% predict(data_client(), type = "response")})
+  probability <- reactive({ mx %>% predict(data_client(), type = "response")})
   
   output$text <- renderText({ paste0("The probability of being a fraud is ",probability()) })
 }
